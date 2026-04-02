@@ -19,14 +19,20 @@ exports.receiveData = async (req, res) => {
             isOnline: true
         };
 
+        // 🚨 Skip invalid GPS
+        if (data.lat === 0 && data.lng === 0) {
+            console.log("⚠️ GPS NOT READY");
+            return res.send("GPS not ready");
+        }
+
         const device = await deviceService.upsertDevice(data);
 
         console.log("💾 Saved Device:", device.deviceId);
 
-        // Send to app
+        // 📡 Real-time update
         io.emit("location-update", device);
 
-        // Geofence / alert
+        // 🚨 Alert / Geofence
         const dist = getDistance(
             data.lat,
             data.lng,

@@ -4,7 +4,10 @@ exports.upsertDevice = async (data) => {
     return await Device.findOneAndUpdate(
         { deviceId: data.deviceId },
         data,
-        { upsert: true, returnDocument: "after" } // ✅ FIXED
+        {
+            upsert: true,
+            returnDocument: "after" // ✅ FIX (no warning now)
+        }
     );
 };
 
