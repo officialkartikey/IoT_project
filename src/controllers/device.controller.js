@@ -9,27 +9,40 @@ const SAFE_ZONE = {
 };
 
 exports.receiveData = async (req, res) => {
-    const data = {
-        ...req.body,
-        lastSeen: new Date(),
-        isOnline: true
-    };
+    try {
+        console.log("🔥 DEVICE API HIT");
+        console.log("📦 Incoming Data:", req.body);
 
-    const device = await deviceService.upsertDevice(data);
+        const data = {
+            ...req.body,
+            lastSeen: new Date(),
+            isOnline: true
+        };
 
-    io.emit("location-update", device);
+        const device = await deviceService.upsertDevice(data);
 
-    // Geofence check
-    const dist = getDistance(
-        data.lat,
-        data.lng,
-        SAFE_ZONE.lat,
-        SAFE_ZONE.lng
-    );
+        console.log("💾 Saved Device:", device.deviceId);
 
-    if (dist > SAFE_ZONE.radius || data.alert) {
-        io.emit("emergency-alert", device);
+        // Send to app
+        io.emit("location-update", device);
+
+        // Geofence / alert
+        const dist = getDistance(
+            data.lat,
+            data.lng,
+            SAFE_ZONE.lat,
+            SAFE_ZONE.lng
+        );
+
+        if (dist > SAFE_ZONE.radius || data.alert) {
+            console.log("🚨 EMERGENCY TRIGGERED");
+            io.emit("emergency-alert", device);
+        }
+
+        res.send("OK");
+
+    } catch (err) {
+        console.error("❌ ERROR:", err);
+        res.status(500).send("Error");
     }
-
-    res.send("OK");
 };
