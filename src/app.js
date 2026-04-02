@@ -8,6 +8,10 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.get("/test", (req, res) => {
+    console.log("✅ TEST ROUTE HIT");
+    res.send("TEST OK");
+});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/device", deviceRoutes);
