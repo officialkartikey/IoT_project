@@ -1,40 +1,89 @@
 const deviceService = require("../services/device.service");
+const Emergency = require("../models/emergency.model");
 const { io } = require("../sockets/socket");
+const { getDistance } = require("../utils/distance");
+
+const SAFE_ZONE = {
+    lat: 28.677,
+    lng: 77.501,
+    radius: 200
+};
 
 exports.receiveData = async (req, res) => {
     try {
-        console.log("🔥 DEVICE API HIT");
-        console.log("📦 Incoming Data:", req.body);
-
         let { deviceId, lat, lng, alert } = req.body;
 
-        // ensure boolean
+        console.log("📦", deviceId, lat, lng, alert);
+
+        // 🔥 normalize boolean
         alert = alert === true || alert === "true";
 
-        // ❌ IGNORE NON-ALERT DATA
-        if (!alert) {
-            console.log("⏭️ Skipping normal data (alert=false)");
-            return res.send("Ignored");
+        const now = new Date();
+
+        // 🟡 HANDLE GPS
+        const validGPS = !(lat === 0 && lng === 0);
+
+        // ✅ 1. ALWAYS UPDATE DEVICE (live tracking)
+        if (validGPS) {
+            const device = await deviceService.upsertDevice({
+                deviceId,
+                lat,
+                lng,
+                lastSeen: now
+            });
+
+            // 📡 real-time location (NO DB load on frontend)
+            io.emit("location-update", device);
         }
 
-        // 🚨 ONLY SAVE ALERT DATA
-        const data = {
-            deviceId,
-            lat,
-            lng,
-            alert: true,
-            lastSeen: new Date(),
-            isOnline: true
-        };
+        // 🚨 2. HANDLE ALERT (HIGH PRIORITY)
+        if (alert) {
+            console.log("🚨 ALERT");
 
-        const device = await deviceService.upsertDevice(data);
+            await Emergency.create({
+                deviceId,
+                lat,
+                lng
+            });
 
-        console.log("💾 ALERT SAVED:", device.deviceId);
+            io.emit("emergency-alert", {
+                deviceId,
+                lat,
+                lng
+            });
 
-        // 🔔 Emit to frontend
-        io.emit("emergency-alert", device);
+            return res.send("ALERT SAVED");
+        }
 
-        res.send("ALERT SAVED");
+        // 🧭 3. GEOFENCE (only if GPS valid)
+        if (validGPS) {
+            const dist = getDistance(
+                lat,
+                lng,
+                SAFE_ZONE.lat,
+                SAFE_ZONE.lng
+            );
+
+            if (dist > SAFE_ZONE.radius) {
+                console.log("🚨 GEOFENCE");
+
+                await Emergency.create({
+                    deviceId,
+                    lat,
+                    lng,
+                    type: "GEOFENCE"
+                });
+
+                io.emit("emergency-alert", {
+                    deviceId,
+                    lat,
+                    lng,
+                    type: "GEOFENCE"
+                });
+            }
+        }
+
+        res.send("OK");
 
     } catch (err) {
         console.error("❌ ERROR:", err);
