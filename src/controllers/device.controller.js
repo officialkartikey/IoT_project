@@ -15,6 +15,17 @@ exports.receiveData = async (req, res) => {
 
         let { deviceId, lat, lng, alert } = req.body;
 
+        // 🔥 FIX 1: Ensure boolean
+        alert = alert === true || alert === "true";
+
+        // 🔥 FIX 2: Get existing device
+        const existing = await deviceService.getDevice(deviceId);
+
+        // 🔥 FIX 3: Prevent alert overwrite
+        if (existing?.alert === true && alert === false) {
+            alert = true;
+        }
+
         let data = {
             deviceId,
             lat,
@@ -24,33 +35,34 @@ exports.receiveData = async (req, res) => {
             isOnline: true
         };
 
-        // 🚨 1. ALWAYS HANDLE ALERT FIRST (IMPORTANT FIX)
+        // 🚨 1. HANDLE ALERT FIRST (NEVER SKIP)
         if (alert) {
             console.log("🚨 EMERGENCY ALERT RECEIVED");
 
-            // even if GPS = 0, still save
             const device = await deviceService.upsertDevice(data);
+
+            console.log("💾 Saved Device (ALERT):", device.deviceId, device.alert);
 
             io.emit("emergency-alert", device);
 
             return res.send("ALERT SAVED");
         }
 
-        // 🟡 2. GPS VALIDATION (ONLY FOR NORMAL TRACKING)
+        // 🟡 2. GPS VALIDATION (ONLY FOR NORMAL DATA)
         if (lat === 0 && lng === 0) {
             console.log("⚠️ GPS NOT READY");
             return res.send("GPS not ready");
         }
 
-        // ✅ 3. SAVE NORMAL DATA
+        // ✅ 3. SAVE NORMAL LOCATION
         const device = await deviceService.upsertDevice(data);
 
-        console.log("💾 Saved Device:", device.deviceId);
+        console.log("💾 Saved Device:", device.deviceId, "Alert:", device.alert);
 
         // 📡 4. REAL-TIME LOCATION UPDATE
         io.emit("location-update", device);
 
-        // 🧭 5. GEOFENCE LOGIC (CLEAR)
+        // 🧭 5. GEOFENCE LOGIC
         const dist = getDistance(
             lat,
             lng,
