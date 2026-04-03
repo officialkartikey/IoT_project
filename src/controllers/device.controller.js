@@ -11,20 +11,26 @@ const SAFE_ZONE = {
 
 exports.receiveData = async (req, res) => {
     try {
+        console.log("\n================ NEW REQUEST ================");
+        
         let { deviceId, lat, lng, alert } = req.body;
 
-        console.log("📦", deviceId, lat, lng, alert);
+        console.log("📦 RAW DATA:", req.body);
 
         // 🔥 normalize boolean
         alert = alert === true || alert === "true";
+        console.log("🔍 Parsed Alert:", alert, "| Type:", typeof alert);
 
         const now = new Date();
 
         // 🟡 HANDLE GPS
         const validGPS = !(lat === 0 && lng === 0);
+        console.log("📍 GPS VALID:", validGPS);
 
-        // ✅ 1. ALWAYS UPDATE DEVICE (live tracking)
+        // ✅ 1. UPDATE DEVICE
         if (validGPS) {
+            console.log("💾 Updating device location...");
+
             const device = await deviceService.upsertDevice({
                 deviceId,
                 lat,
@@ -32,19 +38,31 @@ exports.receiveData = async (req, res) => {
                 lastSeen: now
             });
 
-            // 📡 real-time location (NO DB load on frontend)
+            console.log("✅ Device Updated:", device);
+
             io.emit("location-update", device);
+        } else {
+            console.log("⚠️ GPS NOT VALID - Skipping location update");
         }
 
-        // 🚨 2. HANDLE ALERT (HIGH PRIORITY)
+        // 🚨 2. HANDLE ALERT
         if (alert) {
-            console.log("🚨 ALERT");
+            console.log("🚨 ALERT TRIGGERED");
 
-            await Emergency.create({
-                deviceId,
-                lat,
-                lng
-            });
+            try {
+                console.log("🔥 Attempting to save emergency...");
+
+                const saved = await Emergency.create({
+                    deviceId,
+                    lat,
+                    lng
+                });
+
+                console.log("✅ EMERGENCY SAVED:", saved);
+
+            } catch (err) {
+                console.error("❌ EMERGENCY SAVE FAILED:", err);
+            }
 
             io.emit("emergency-alert", {
                 deviceId,
@@ -52,10 +70,12 @@ exports.receiveData = async (req, res) => {
                 lng
             });
 
+            console.log("📡 Alert emitted to frontend");
+
             return res.send("ALERT SAVED");
         }
 
-        // 🧭 3. GEOFENCE (only if GPS valid)
+        // 🧭 3. GEOFENCE
         if (validGPS) {
             const dist = getDistance(
                 lat,
@@ -64,15 +84,24 @@ exports.receiveData = async (req, res) => {
                 SAFE_ZONE.lng
             );
 
-            if (dist > SAFE_ZONE.radius) {
-                console.log("🚨 GEOFENCE");
+            console.log("📏 Distance from safe zone:", dist);
 
-                await Emergency.create({
-                    deviceId,
-                    lat,
-                    lng,
-                    type: "GEOFENCE"
-                });
+            if (dist > SAFE_ZONE.radius) {
+                console.log("🚨 GEOFENCE BREACH");
+
+                try {
+                    const saved = await Emergency.create({
+                        deviceId,
+                        lat,
+                        lng,
+                        type: "GEOFENCE"
+                    });
+
+                    console.log("✅ GEOFENCE SAVED:", saved);
+
+                } catch (err) {
+                    console.error("❌ GEOFENCE SAVE FAILED:", err);
+                }
 
                 io.emit("emergency-alert", {
                     deviceId,
@@ -80,13 +109,16 @@ exports.receiveData = async (req, res) => {
                     lng,
                     type: "GEOFENCE"
                 });
+
+                console.log("📡 Geofence alert emitted");
             }
         }
 
+        console.log("✅ REQUEST COMPLETED");
         res.send("OK");
 
     } catch (err) {
-        console.error("❌ ERROR:", err);
+        console.error("❌ FATAL ERROR:", err);
         res.status(500).send("Error");
     }
 };
