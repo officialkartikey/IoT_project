@@ -12,22 +12,30 @@ const SAFE_ZONE = {
 exports.receiveData = async (req, res) => {
     try {
         console.log("\n================ NEW REQUEST ================");
-        
+
         let { deviceId, lat, lng, alert } = req.body;
 
         console.log("📦 RAW DATA:", req.body);
 
-        // 🔥 normalize boolean
-        alert = alert === true || alert === "true";
-        console.log("🔍 Parsed Alert:", alert, "| Type:", typeof alert);
+        // 🔥 BULLETPROOF ALERT PARSE
+        const rawAlert = alert;
+        alert = (
+            alert === true ||
+            alert === "true" ||
+            alert === 1 ||
+            alert === "1"
+        );
+
+        console.log("🔥 RAW ALERT:", rawAlert);
+        console.log("🔥 FINAL ALERT:", alert);
 
         const now = new Date();
 
-        // 🟡 HANDLE GPS
+        // 🟡 GPS CHECK
         const validGPS = !(lat === 0 && lng === 0);
         console.log("📍 GPS VALID:", validGPS);
 
-        // ✅ 1. UPDATE DEVICE
+        // ✅ 1. LIVE TRACKING (always update if GPS valid)
         if (validGPS) {
             console.log("💾 Updating device location...");
 
@@ -42,15 +50,15 @@ exports.receiveData = async (req, res) => {
 
             io.emit("location-update", device);
         } else {
-            console.log("⚠️ GPS NOT VALID - Skipping location update");
+            console.log("⚠️ GPS NOT VALID - skipping location update");
         }
 
-        // 🚨 2. HANDLE ALERT
+        // 🚨 2. ALERT HANDLING (MAIN FIX)
         if (alert) {
             console.log("🚨 ALERT TRIGGERED");
 
             try {
-                console.log("🔥 Attempting to save emergency...");
+                console.log("🔥 Saving emergency to DB...");
 
                 const saved = await Emergency.create({
                     deviceId,
@@ -114,7 +122,8 @@ exports.receiveData = async (req, res) => {
             }
         }
 
-        console.log("✅ REQUEST COMPLETED");
+        console.log("✅ REQUEST COMPLETE\n");
+
         res.send("OK");
 
     } catch (err) {
