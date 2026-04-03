@@ -1,6 +1,6 @@
 const deviceService = require("../services/device.service");
 const Emergency = require("../models/emergency.model");
-const { io } = require("../sockets/socket");
+const { getIO } = require("../sockets/socket");
 const { getDistance } = require("../utils/distance");
 
 const SAFE_ZONE = {
@@ -29,17 +29,21 @@ exports.receiveData = async (req, res) => {
         console.log("🔥 RAW ALERT:", rawAlert);
         console.log("🔥 FINAL ALERT:", alert);
 
+        const io = getIO(); // ✅ correct way
+
         const now = new Date();
 
-        // 🟡 GPS CHECK
+        // 🟡 GPS VALIDATION
         const validGPS = !(lat === 0 && lng === 0);
         console.log("📍 GPS VALID:", validGPS);
 
-        // ✅ 1. LIVE TRACKING (always update if GPS valid)
+        let device;
+
+        // ✅ 1. LIVE TRACKING
         if (validGPS) {
             console.log("💾 Updating device location...");
 
-            const device = await deviceService.upsertDevice({
+            device = await deviceService.upsertDevice({
                 deviceId,
                 lat,
                 lng,
@@ -48,22 +52,27 @@ exports.receiveData = async (req, res) => {
 
             console.log("✅ Device Updated:", device);
 
-            io.emit("location-update", device);
+            // 📡 SEND CLEAN DATA TO FRONTEND
+            io.emit("location-update", {
+                deviceId: device.deviceId,
+                lat: device.lat,
+                lng: device.lng,
+                lastSeen: device.lastSeen
+            });
         } else {
             console.log("⚠️ GPS NOT VALID - skipping location update");
         }
 
-        // 🚨 2. ALERT HANDLING (MAIN FIX)
+        // 🚨 2. ALERT HANDLING
         if (alert) {
             console.log("🚨 ALERT TRIGGERED");
 
             try {
-                console.log("🔥 Saving emergency to DB...");
-
                 const saved = await Emergency.create({
                     deviceId,
                     lat,
-                    lng
+                    lng,
+                    type: "SOS"
                 });
 
                 console.log("✅ EMERGENCY SAVED:", saved);
@@ -75,7 +84,8 @@ exports.receiveData = async (req, res) => {
             io.emit("emergency-alert", {
                 deviceId,
                 lat,
-                lng
+                lng,
+                type: "SOS"
             });
 
             console.log("📡 Alert emitted to frontend");
