@@ -4,9 +4,9 @@ const { getIO } = require("../sockets/socket");
 const { getDistance } = require("../utils/distance");
 
 const SAFE_ZONE = {
-    lat:  26.251099,
-    lng:  78.172611,
-    radius: 200
+    lat:  28.676384,
+    lng:  77.172611,
+    radius: 1000
 };
 
 exports.receiveData = async (req, res) => {
