@@ -5,6 +5,7 @@ const authRoutes = require("./routes/auth.routes");
 const deviceRoutes = require("./routes/device.routes");
 const emergencyRoutes = require("./routes/emergency.routes");
 const contactRoutes = require("./routes/contact.routes");
+const geofenceRoutes = require("./routes/geofenceRoutes");
 
 
 const app = express();
@@ -22,7 +23,7 @@ app.use((req, res, next) => {
 
 
 app.use("/api/contact", contactRoutes);
-
+app.use("/api/geofences", geofenceRoutes);
 
 app.use("/api/emergency", emergencyRoutes);
 

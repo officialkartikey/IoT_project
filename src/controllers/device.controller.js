@@ -1,141 +1,95 @@
 const deviceService = require("../services/device.service");
 const Emergency = require("../models/emergency.model");
+const Geofence = require("../models/Geofence"); // 1. Import your new Geofence model
 const { getIO } = require("../sockets/socket");
 const { getDistance } = require("../utils/distance");
 
+<<<<<<< HEAD
 const SAFE_ZONE = {
     lat:  28.6755,
     lng:  77.5023,
     radius: 1000
 };
 
+=======
+>>>>>>> 349500b0cb0fe19f849ef3367371032ec371e8ac
 exports.receiveData = async (req, res) => {
     try {
         console.log("\n================ NEW REQUEST ================");
-
         let { deviceId, lat, lng, alert } = req.body;
 
-        console.log("📦 RAW DATA:", req.body);
-
         // 🔥 BULLETPROOF ALERT PARSE
-        const rawAlert = alert;
-        alert = (
-            alert === true ||
-            alert === "true" ||
-            alert === 1 ||
-            alert === "1"
-        );
-
-        console.log("🔥 RAW ALERT:", rawAlert);
-        console.log("🔥 FINAL ALERT:", alert);
-
-        const io = getIO(); // ✅ correct way
-
+        alert = (alert === true || alert === "true" || alert === 1 || alert === "1");
+        const io = getIO();
         const now = new Date();
 
         // 🟡 GPS VALIDATION
         const validGPS = !(lat === 0 && lng === 0);
-        console.log("📍 GPS VALID:", validGPS);
-
-        let device;
 
         // ✅ 1. LIVE TRACKING
         if (validGPS) {
-            console.log("💾 Updating device location...");
-
-            device = await deviceService.upsertDevice({
+            await deviceService.upsertDevice({
                 deviceId,
                 lat,
                 lng,
                 lastSeen: now
             });
 
-            console.log("✅ Device Updated:", device);
-
-            // 📡 SEND CLEAN DATA TO FRONTEND
-            io.emit("location-update", {
-                deviceId: device.deviceId,
-                lat: device.lat,
-                lng: device.lng,
-                lastSeen: device.lastSeen
-            });
-        } else {
-            console.log("⚠️ GPS NOT VALID - skipping location update");
+            io.emit("location-update", { deviceId, lat, lng, lastSeen: now });
         }
 
-        // 🚨 2. ALERT HANDLING
+        // 🚨 2. SOS ALERT HANDLING
         if (alert) {
-            console.log("🚨 ALERT TRIGGERED");
-
-            try {
-                const saved = await Emergency.create({
-                    deviceId,
-                    lat,
-                    lng,
-                    type: "SOS"
-                });
-
-                console.log("✅ EMERGENCY SAVED:", saved);
-
-            } catch (err) {
-                console.error("❌ EMERGENCY SAVE FAILED:", err);
-            }
-
-            io.emit("emergency-alert", {
-                deviceId,
-                lat,
-                lng,
-                type: "SOS"
-            });
-
-            console.log("📡 Alert emitted to frontend");
-
+            await Emergency.create({ deviceId, lat, lng, type: "SOS" });
+            io.emit("emergency-alert", { deviceId, lat, lng, type: "SOS" });
             return res.send("ALERT SAVED");
         }
 
-        // 🧭 3. GEOFENCE
+        // 🧭 3. DYNAMIC GEOFENCE (The Updated Part)
         if (validGPS) {
-            const dist = getDistance(
-                lat,
-                lng,
-                SAFE_ZONE.lat,
-                SAFE_ZONE.lng
-            );
+            // 2. Fetch the ACTIVE fence from the database instead of using a hardcoded variable
+            const activeFence = await Geofence.findOne({ isActive: true });
 
-            console.log("📏 Distance from safe zone:", dist);
+            if (activeFence) {
+                const dist = getDistance(
+                    lat,
+                    lng,
+                    activeFence.latitude, // Use DB values
+                    activeFence.longitude // Use DB values
+                );
 
-            if (dist > SAFE_ZONE.radius) {
-                console.log("🚨 GEOFENCE BREACH");
+                console.log(`📏 Distance from ${activeFence.name}:`, dist);
 
-                try {
-                    const saved = await Emergency.create({
+                // 3. Compare distance with the DYNAMIC radius from DB
+                if (dist > activeFence.radius) {
+                    console.log(`🚨 GEOFENCE BREACH: Outside ${activeFence.name}`);
+
+                    try {
+                        await Emergency.create({
+                            deviceId,
+                            lat,
+                            lng,
+                            type: "GEOFENCE",
+                            locationName: activeFence.name // Optional: track which fence was breached
+                        });
+                    } catch (err) {
+                        console.error("❌ GEOFENCE SAVE FAILED:", err);
+                    }
+
+                    io.emit("emergency-alert", {
                         deviceId,
                         lat,
                         lng,
-                        type: "GEOFENCE"
+                        type: "GEOFENCE",
+                        locationName: activeFence.name
                     });
-
-                    console.log("✅ GEOFENCE SAVED:", saved);
-
-                } catch (err) {
-                    console.error("❌ GEOFENCE SAVE FAILED:", err);
                 }
-
-                io.emit("emergency-alert", {
-                    deviceId,
-                    lat,
-                    lng,
-                    type: "GEOFENCE"
-                });
-
-                console.log("📡 Geofence alert emitted");
+            } else {
+                console.log("ℹ️ No active geofence set in database.");
             }
         }
 
-        console.log("✅ REQUEST COMPLETE\n");
-
         res.send("OK");
-
     } catch (err) {
         console.error("❌ FATAL ERROR:", err);
         res.status(500).send("Error");
