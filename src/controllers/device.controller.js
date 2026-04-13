@@ -4,15 +4,6 @@ const Geofence = require("../models/Geofence"); // 1. Import your new Geofence m
 const { getIO } = require("../sockets/socket");
 const { getDistance } = require("../utils/distance");
 
-<<<<<<< HEAD
-const SAFE_ZONE = {
-    lat:  28.6755,
-    lng:  77.5023,
-    radius: 1000
-};
-
-=======
->>>>>>> 349500b0cb0fe19f849ef3367371032ec371e8ac
 exports.receiveData = async (req, res) => {
     try {
         console.log("\n================ NEW REQUEST ================");
