@@ -1,88 +1,104 @@
 const deviceService = require("../services/device.service");
 const Emergency = require("../models/emergency.model");
-const Geofence = require("../models/Geofence"); // 1. Import your new Geofence model
+const Geofence = require("../models/Geofence"); 
 const { getIO } = require("../sockets/socket");
 const { getDistance } = require("../utils/distance");
 
+// ... top imports remain the same
+
 exports.receiveData = async (req, res) => {
     try {
-        console.log("\n================ NEW REQUEST ================");
-        let { deviceId, lat, lng, alert } = req.body;
+        let {
+            deviceId,
+            lat,
+            lng,
+            alert,
+            battPct,
+            battMv,
+            battHealth,
+            battLow
+        } = req.body;
 
-        // 🔥 BULLETPROOF ALERT PARSE
-        alert = (alert === true || alert === "true" || alert === 1 || alert === "1");
         const io = getIO();
         const now = new Date();
-
-        // 🟡 GPS VALIDATION
         const validGPS = !(lat === 0 && lng === 0);
 
-        // ✅ 1. LIVE TRACKING
         if (validGPS) {
-            await deviceService.upsertDevice({
-                deviceId,
-                lat,
-                lng,
-                lastSeen: now
-            });
+            const previousData = await deviceService.getDeviceById(deviceId);
+            let speed = 0;
 
-            io.emit("location-update", { deviceId, lat, lng, lastSeen: now });
-        }
+            if (previousData && previousData.lat && previousData.lng) {
+                const distanceCovered = getDistance(
+                    previousData.lat,
+                    previousData.lng,
+                    lat,
+                    lng
+                );
 
-        // 🚨 2. SOS ALERT HANDLING
-        if (alert) {
-            await Emergency.create({ deviceId, lat, lng, type: "SOS" });
-            io.emit("emergency-alert", { deviceId, lat, lng, type: "SOS" });
-            return res.send("ALERT SAVED");
-        }
+                const timeDiff =
+                    (now - new Date(previousData.lastSeen)) / 1000;
 
-        // 🧭 3. DYNAMIC GEOFENCE (The Updated Part)
-        if (validGPS) {
-            // 2. Fetch the ACTIVE fence from the database instead of using a hardcoded variable
+                if (timeDiff > 0) {
+                    const mps = distanceCovered / timeDiff;
+                    speed = parseFloat((mps * 3.6).toFixed(2));
+                }
+            }
+
             const activeFence = await Geofence.findOne({ isActive: true });
+
+            let geofenceData = {
+                isInside: true,
+                distance: 0,
+                locationName: "None"
+            };
 
             if (activeFence) {
                 const dist = getDistance(
                     lat,
                     lng,
-                    activeFence.latitude, // Use DB values
-                    activeFence.longitude // Use DB values
+                    activeFence.latitude,
+                    activeFence.longitude
                 );
 
-                console.log(`📏 Distance from ${activeFence.name}:`, dist);
-
-                // 3. Compare distance with the DYNAMIC radius from DB
-                if (dist > activeFence.radius) {
-                    console.log(`🚨 GEOFENCE BREACH: Outside ${activeFence.name}`);
-
-                    try {
-                        await Emergency.create({
-                            deviceId,
-                            lat,
-                            lng,
-                            type: "GEOFENCE",
-                            locationName: activeFence.name // Optional: track which fence was breached
-                        });
-                    } catch (err) {
-                        console.error("❌ GEOFENCE SAVE FAILED:", err);
-                    }
-
-                    io.emit("emergency-alert", {
-                        deviceId,
-                        lat,
-                        lng,
-                        type: "GEOFENCE",
-                        locationName: activeFence.name
-                    });
-                }
-            } else {
-                console.log("ℹ️ No active geofence set in database.");
+                geofenceData = {
+                    isInside: dist <= activeFence.radius,
+                    distance: Math.round(dist),
+                    locationName: activeFence.name
+                };
             }
+
+            await deviceService.upsertDevice({
+                deviceId,
+                lat,
+                lng,
+                speed,
+                battPct,
+                battMv,
+                battHealth,
+                battLow,
+                lastSeen: now
+            });
+
+            io.emit("location-update", {
+                deviceId,
+                lat,
+                lng,
+                speed,
+
+                // Battery fields
+                battPct,
+                battMv,
+                battHealth,
+                battLow,
+
+                ...geofenceData,
+                lastSeen: now
+            });
         }
 
         res.send("OK");
     } catch (err) {
-        console.error("❌ FATAL ERROR:", err);
+        console.error("❌ SPEED CALC ERROR:", err);
         res.status(500).send("Error");
     }
 };

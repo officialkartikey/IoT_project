@@ -8,6 +8,7 @@ const deviceSchema = new mongoose.Schema({
     battery: Number,
     gps: Boolean,
     lastSeen: Date,
+    speed: { type: Number, default: 0 },
     isOnline: Boolean
 }, { timestamps: true });
 

@@ -4,12 +4,18 @@ exports.upsertDevice = async (data) => {
     return await Device.findOneAndUpdate(
         { deviceId: data.deviceId },
         {
-            // 🔥 Only update required fields (optimized)
             $set: {
                 lat: data.lat,
                 lng: data.lng,
+                speed: data.speed,
                 lastSeen: data.lastSeen,
-                isOnline: true
+                isOnline: true,
+
+                // Battery fields
+                battPct: data.battPct,
+                battMv: data.battMv,
+                battHealth: data.battHealth,
+                battLow: data.battLow
             }
         },
         {
@@ -22,6 +28,19 @@ exports.upsertDevice = async (data) => {
 exports.getDevice = async (deviceId) => {
     return await Device.findOne(
         { deviceId },
-        { deviceId: 1, lat: 1, lng: 1, alert: 1, lastSeen: 1 } // 🔥 projection (faster)
+        {
+            deviceId: 1,
+            lat: 1,
+            lng: 1,
+            speed: 1,
+            alert: 1,
+            lastSeen: 1,
+
+            // Battery fields
+            battPct: 1,
+            battMv: 1,
+            battHealth: 1,
+            battLow: 1
+        }
     );
 };
