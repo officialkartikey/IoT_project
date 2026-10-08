@@ -44,3 +44,5 @@ exports.getDevice = async (deviceId) => {
         }
     );
 };
+
+exports.getDeviceById = exports.getDevice;

@@ -12,6 +12,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.get("/test", (req, res) => {
     console.log("✅ TEST ROUTE HIT");
     res.send("TEST OK");
@@ -29,5 +30,6 @@ app.use("/api/emergency", emergencyRoutes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/device", deviceRoutes);
+app.post("/device-data", require("./controllers/device.controller").receiveData);
 
 module.exports = app;
